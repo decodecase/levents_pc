@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Levent Kara's Device</title>
+<style>
+    body {
+      margin: 0;
+      padding: 20px;
+      background: #0066cc;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    }
+    .folder-container {
+      position: absolute;
+      left: 20px;
+      top: 20px;
+      width: 200px;
+    }
+    .folder {
+      margin-bottom: 10px;
+      border: 1px solid #666;
+      background: #f0f0f0;
+      border-radius: 4px;
+    }
+    .folder-header {
+      background: #0066cc;
+      color: white;
+      padding: 4px 8px;
+      border-radius: 4px 4px 0 0;
+      cursor: pointer;
+    }
+    .folder-header:hover {
+      background: #0055aa;
+    }
+    .folder-content {
+      padding: 8px;
+    }
+    .folder button {
+      width: 100%;
+      padding: 4px;
+      margin: 2px 0;
+      background: #e0e0e0;
+      border: 1px solid #666;
+      border-radius: 2px;
+      cursor: pointer;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    }
+    .folder button:hover {
+      background: #d0d0d0;
+    }
+    .file-content {
+      position: absolute;
+      right: 20px;
+      top: 20px;
+      width: 600px;
+      height: 400px;
+      background: #f0f0f0;
+      border: 1px solid #666;
+      border-radius: 4px;
+      display: none;
+      z-index: 1000;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+    .file-content.active {
+      display: block;
+    }
+    .file-header {
+      background: #0066cc;
+      color: white;
+      padding: 4px 8px;
+      border-radius: 4px 4px 0 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: move;
+    }
+    .file-header button {
+      background: none;
+      border: none;
+      color: white;
+      cursor: pointer;
+      padding: 0 4px;
+      margin-left: 5px;
+    }
+    .file-header button:hover {
+      background: #0055aa;
+    }
+    .file-content pre {
+      white-space: pre-wrap;
+      margin: 10px;
+      padding: 10px;
+      background: white;
+      border: 1px solid #ccc;
+      border-radius: 2px;
+      font-family: "Consolas", "Courier New", monospace;
+      font-size: 12px;
+      line-height: 1.4;
+      height: calc(100% - 30px);
+      overflow-y: auto;
+    }
+    .resize-handle {
+      position: absolute;
+      bottom: 0;
+      right: 0;
+      width: 10px;
+      height: 10px;
+      background: #666;
+      cursor: se-resize;
+    }
+    .hidden { display: none; }
+    
+    /* Window buttons */
+    .window-buttons {
+      display: flex;
+      gap: 2px;
+    }
+    .minimize-btn, .maximize-btn, .restore-btn, .close-btn {
+      width: 16px;
+      height: 16px;
+      border: none;
+      background: none;
+      cursor: pointer;
+      padding: 0;
+      margin: 0;
+    }
+    .minimize-btn:hover, .maximize-btn:hover, .restore-btn:hover, .close-btn:hover {
+      background: #0055aa;
+    }
+    
+    /* Window states */
+    .file-content.minimized {
+      display: none;
+    }
+    .file-content.maximized {
+      width: 100% !important;
+      height: 100% !important;
+      left: 0 !important;
+      top: 0 !important;
+    }
+    
+    /* Animation for window transitions */
+    .file-content {
+      transition: all 0.2s ease-in-out;
+    }
+  </style>
+<script>
+    function showFolder(folder) {
+      document.querySelectorAll('.folder').forEach(f => f.classList.add('hidden'));
+      document.getElementById(folder).classList.remove('hidden');
+    }
+
+    function showContent(id) {
+      // Hide all content
+      document.querySelectorAll('.file-content').forEach(el => el.classList.remove('active'));
+      
+      // Show selected content
+      const content = document.getElementById(id);
+      if (content) {
+        content.classList.add('active');
+      }
+    }
+
+    function goBack() {
+      // Hide all active content windows
+      document.querySelectorAll('.file-content').forEach(el => {
+        el.classList.remove('active');
+        el.classList.remove('maximized');
+      });
+      
+      // Show main folder
+      showFolder('main-folder');
+    }
+
+    function unlockPrivate() {
+      const pass = prompt("Enter password to access 'Private' folder:");
+      if (pass === "stones") {
+        showFolder('private-folder');
+      } else {
+        alert("Incorrect password");
+      }
+    }
+
+    // Add drag functionality
+    document.querySelectorAll('.file-header').forEach(header => {
+      header.addEventListener('mousedown', function(e) {
+        const window = this.parentElement;
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const initialX = window.offsetLeft - startX;
+        const initialY = window.offsetTop - startY;
+
+        const move = function(e) {
+          e.preventDefault();
+          window.style.left = (e.clientX + initialX) + 'px';
+          window.style.top = (e.clientY + initialY) + 'px';
+        };
+
+        const stop = function() {
+          document.removeEventListener('mousemove', move);
+          document.removeEventListener('mouseup', stop);
+        };
+
+        document.addEventListener('mousemove', move);
+        document.addEventListener('mouseup', stop);
+      });
+    });
+
+    // Add resize functionality
+    document.querySelectorAll('.file-content').forEach(content => {
+      let isResizing = false;
+      let originalWidth;
+      let originalX;
+
+      content.addEventListener('mousedown', function(e) {
+        if (e.target.classList.contains('resize-handle')) {
+          isResizing = true;
+          originalWidth = content.offsetWidth;
+          originalX = e.clientX;
+        }
+      });
+
+      document.addEventListener('mousemove', function(e) {
+        if (isResizing) {
+          const width = originalWidth + (e.clientX - originalX);
+          content.style.width = width + 'px';
+        }
+      });
+
+      document.addEventListener('mouseup', function() {
+        isResizing = false;
+      });
+    });
+
+    // Add minimize functionality
+    document.querySelectorAll('.minimize-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const content = this.closest('.file-content');
+        content.style.display = 'none';
+      });
+    });
+
+    // Add maximize functionality
+    document.querySelectorAll('.maximize-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const content = this.closest('.file-content');
+        content.style.width = '100%';
+        content.style.height = '100%';
+        content.style.left = '0';
+        content.style.top = '0';
+      });
+    });
+
+    // Add restore functionality
+    document.querySelectorAll('.restore-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const content = this.closest('.file-content');
+        content.style.width = '600px';
+        content.style.height = '400px';
+        content.style.left = '20px';
+        content.style.top = '20px';
+      });
+    });
+  </script>
+</script>
+</head>
+<body>
+<h1>Levent Kara - Personal Device Archive</h1>
+<div class="container">
+  <div class="sidebar">
+    <div id="main-folder" class="folder">
+      <button onclick="showFolder('mail-folder')">Mail</button>
+      <button onclick="showFolder('photos-folder')">Photos</button>
+      <button onclick="showFolder('notes-folder')">Notes from Göbeklitepe</button>
+      <button onclick="unlockPrivate()">Private</button>
+    </div>
+    <div id="private-folder" class="folder hidden">
+      <button onclick="goBack()">← Back</button>
+      <button onclick="showContent('confidential_journal')">confidential_journal.txt</button>
+      <button onclick="showContent('personal_note')">personal_note.txt</button>
+      <button onclick="showContent('symptoms_log')">symptoms_log.txt</button>
+      <button onclick="showContent('site_observation')">site_observation.txt</button>
+      <button onclick="showContent('financial_notes')">financial_notes.txt</button>
+      <button onclick="showContent('revelation')">revelation.txt</button>
+    </div>
+    <div id="mail-folder" class="folder hidden">
+      <button onclick="goBack()">← Back</button>
+      <button onclick="showFolder('inbox-folder')">Inbox</button>
+      <button onclick="showFolder('sent-folder')">Sent</button>
+      <button onclick="showFolder('trash-folder')">Trash</button>
+    </div>
+    <div id="inbox-folder" class="folder hidden">
+      <button onclick="showFolder('mail-folder')">← Back</button>
+      <button onclick="showContent('inbox1')">Equipment Delivery — Urgent</button>
+      <button onclick="showContent('inbox2')">Follow-up: Medication</button>
+      <button onclick="showContent('inbox3')">Invitation: Symposium</button>
+      <button onclick="showContent('inbox4')">Test Results</button>
+      <button onclick="showContent('inbox5')">Back Off</button>
+    </div>
+    <div id="sent-folder" class="folder hidden">
+      <button onclick="showFolder('mail-folder')">← Back</button>
+      <button onclick="showContent('sent1')">Göbeklitepe Findings — Preliminary Report</button>
+      <button onclick="showContent('sent2')">Sorry</button>
+      <button onclick="showContent('sent3')">Reminder: Team Meeting</button>
+      <button onclick="showContent('sent4')">Confirm Participation</button>
+      <button onclick="showContent('sent5')">Increase Patrols</button>
+    </div>
+    <div id="trash-folder" class="folder hidden">
+      <button onclick="showFolder('mail-folder')">← Back</button>
+      <button onclick="showContent('trash1')">About Us</button>
+      <button onclick="showContent('trash2')">Hey</button>
+      <button onclick="showContent('trash3')">Sorry</button>
+      <button onclick="showContent('trash4')">Final</button>
+      <button onclick="showContent('trash5')">Please Understand</button>
+    </div>
+    <div id="photos-folder" class="folder hidden">
+      <button onclick="goBack()">← Back</button>
+      <button onclick="showContent('photo1')">IMG_0012_site_overview.jpg</button>
+      <button onclick="showContent('alphabet1')">alphabet1.png</button>
+      <button onclick="showContent('alphabet2')">alphabet2.png</button>
+    </div>
+    <div id="notes-folder" class="folder hidden">
+      <button onclick="goBack()">← Back</button>
+      <button onclick="showContent('note1')">field_notes_01.txt</button>
+      <button onclick="showContent('note2')">field_notes_02.txt</button>
+      <button onclick="showContent('note3')">field_notes_03.txt</button>
+      <button onclick="showContent('note4')">field_notes_04.txt</button>
+      <button onclick="showContent('note5')">field_notes_05.txt</button>
+      <button onclick="showContent('note6')">field_notes_06.txt</button>
+    </div>
+    <div id="note1" class="file-content">
+      <div class="file-header">
+        <span>field_notes_01.txt</span>
+        <div class="window-buttons">
+          <button class="minimize-btn" title="Minimize">-</button>
+          <button class="maximize-btn" title="Maximize">□</button>
+          <button class="close-btn" title="Close" onclick="goBack()">×</button>
+        </div>
+      </div>
+      <pre>
+Date: 27 Feb 2025 – 18:40
+
+I completed another round of laser-level readings on Pillar 43 ("Vulture Stone"). The reliefs align 3.2° off true east—a deviation too deliberate to be accidental. When corrected for precession, the axis intersects the heliacal rising of Sirius around 9300 BCE.
+Burak remains skeptical, muttering about "confirmation bias", yet the stellar mapping is undeniable. I must draft a side-paper on ritual astronomy before the symposium. If confirmed, this pushes symbolic sky-worship at least 1,500 years earlier than current consensus.
+      </pre>
+      <div class="resize-handle"></div>
+    </div>
+    <div id="note2" class="file-content">
+      <div class="file-header">
+        <span>field_notes_02.txt</span>
+        <div class="window-buttons">
+          <button class="minimize-btn" title="Minimize">-</button>
+          <button class="maximize-btn" title="Maximize">□</button>
+          <button class="close-btn" title="Close" onclick="goBack()">×</button>
+        </div>
+      </div>
+      <pre>
+Date: 1 Mar 2025 – 02:15 (night shift)
+
+Heard the scraping again outside the southern trench—metal on stone, slow and deliberate. No footprints, no tool marks when we searched at dawn. Could be local foxes… but foxes don’t whisper.
+While documenting Layer II, I caught a flicker in the corner of my eye: a tall shadow between Pillars 18 and 19. Hallucination? Fatigue? The figure vanished when I blinked, yet the air still felt "crowded", as if someone was standing beside me. Logged the episode in my symptom diary for Dr Aksoy.
+      </pre>
+      <div class="resize-handle"></div>
+    </div>
+    <div id="note3" class="file-content">
+      <div class="file-header">
+        <span>field_notes_03.txt</span>
+        <div class="window-buttons">
+          <button class="minimize-btn" title="Minimize">-</button>
+          <button class="maximize-btn" title="Maximize">□</button>
+          <button class="close-btn" title="Close" onclick="goBack()">×</button>
+        </div>
+      </div>
+      <pre>
+Date: 3 Mar 2025 – 11:00
+
+Found fresh soil disturbance behind the storage tent—oval pit roughly 60 cm deep, hastily refilled. Someone searching for artefacts? Kemal waved it off ("Probably a stray dog"), but the edges are shovel-clean, not pawed.
+I followed faint tyre tracks leading to the service road; they stop where the cameras are blind. Treasure hunters? A rival team? Must install motion lights and warn Murat, though he’ll call it paranoia again.
+      </pre>
+      <div class="resize-handle"></div>
+    </div>
+    <div id="note4" class="file-content">
+      <div class="file-header">
+        <span>field_notes_04.txt</span>
+        <div class="window-buttons">
+          <button class="minimize-btn" title="Minimize">-</button>
+          <button class="maximize-btn" title="Maximize">□</button>
+          <button class="close-btn" title="Close" onclick="goBack()">×</button>
+        </div>
+      </div>
+      <pre>
+Date: 4 Mar 2025 – 04:50 (dream log)
+
+Dreamt of the enclosure flooded with moonlight. The pillars were no longer stone but figures in procession, each wearing vulture masks. One turned—its face a void—raised an arm and pointed west toward the Taurus foothills.
+As it did, glyphs along its torso ignited like embers, spelling a phrase I half-remember on waking: "The stone remembers its maker." Woke drenched in sweat, still hearing a low chant: five notes, repeating. Must compare to the tonal sequence on the bone whistle fragment.
+      </pre>
+      <div class="resize-handle"></div>
+    </div>
+    <div id="note5" class="file-content">
+      <div class="file-header">
+        <span>field_notes_05.txt</span>
+        <div class="window-buttons">
+          <button class="minimize-btn" title="Minimize">-</button>
+          <button class="maximize-btn" title="Maximize">□</button>
+          <button class="close-btn" title="Close" onclick="goBack()">×</button>
+        </div>
+      </div>
+      <pre>
+Date: 6 Mar 2025 – 07:25
+
+Found a folded slip wedged under my tent flap: "Keep your nose in the dirt, not in business." No signature, typed on cheap printer paper, edges damp from dew. Ece says it’s a prank; I believe otherwise.
+Adding this to the evidence pouch with last week’s pit photos. If Kemal truly is courting private buyers—as rumours suggest—this could be a scare tactic to keep me quiet.
+      </pre>
+      <div class="resize-handle"></div>
+    </div>
+    <div id="note6" class="file-content">
+      <div class="file-header">
+        <span>field_notes_06.txt</span>
+        <div class="window-buttons">
+          <button class="minimize-btn" title="Minimize">-</button>
+          <button class="maximize-btn" title="Maximize">□</button>
+          <button class="close-btn" title="Close" onclick="goBack()">×</button>
+        </div>
+      </div>
+      <pre>
+Date: 8 Mar 2025 – 15:10
+
+Re-checked the enclosure’s main axis with the total station. The central line is 0.83° west of north, contradicting published site maps. If intentional, that deviation targets the mid-winter sunset circa 9600 BCE. This dovetails with the Sirius alignment hypothesis (see f_notes_01).
+Murat insists the offset is surveying error, but the readings are consistent across four instrument setups. I’ll prepare a geometry overlay—if proven, it rewrites our model of Neolithic cosmology.
+    </pre>
+  </div>
+  <div id="confidential_journal" class="file-content">
+    <div class="file-header">
+      <span>confidential_journal.txt</span>
+      <div class="window-buttons">
+        <button class="minimize-btn" title="Minimize">-</button>
+        <button class="maximize-btn" title="Maximize">□</button>
+        <button class="close-btn" title="Close" onclick="goBack()">×</button>
+      </div>
+    </div>
+    <pre>
+Date: 15 Mar 2025 – 23:45
+
+Must record this while I still can. The site is showing signs of... something. The pillars hum at night, and I've seen shadows moving when I blink. Kemal brushes it off as "fatigue", but I know better. The symbols on Pillar 18 - they're not just carvings. They pulse. I need to document this before...
+    </pre>
+    <div class="resize-handle"></div>
+  </div>
+
+  <div id="personal_note" class="file-content">
+    <div class="file-header">
+      <span>personal_note.txt</span>
+      <div class="window-buttons">
+        <button class="minimize-btn" title="Minimize">-</button>
+        <button class="maximize-btn" title="Maximize">□</button>
+        <button class="close-btn" title="Close" onclick="goBack()">×</button>
+      </div>
+    </div>
+    <pre>
+Date: 18 Mar 2025
+
+The site is changing. The symbols on Pillar 18 pulse with a rhythm. I've started seeing shadows moving when I blink. Kemal thinks it's "fatigue", but I know better. The symbols aren't just carvings - they pulse with a rhythm. I need to document this before...
+    </pre>
+    <div class="resize-handle"></div>
+  </div>
+
+  <div id="symptoms_log" class="file-content">
+    <div class="file-header">
+      <span>symptoms_log.txt</span>
+      <div class="window-buttons">
+        <button class="minimize-btn" title="Minimize">-</button>
+        <button class="maximize-btn" title="Maximize">□</button>
+        <button class="close-btn" title="Close" onclick="goBack()">×</button>
+      </div>
+    </div>
+    <pre>
+Symptoms Log
+
+Date: 16 Mar 2025
+- Dizziness
+- Headaches
+- Visual disturbances
+- Sense of being watched
+
+Date: 17 Mar 2025
+- Increased frequency of symptoms
+- Nightmares about the site
+- Feeling of being followed
+
+Date: 18 Mar 2025
+- Symptoms worsening
+- Site symbols seem to pulse
+- Shadows moving in periphery
+    </pre>
+    <div class="resize-handle"></div>
+  </div>
+
+  <div id="site_observation" class="file-content">
+    <div class="file-header">
+      <span>site_observation.txt</span>
+      <div class="window-buttons">
+        <button class="minimize-btn" title="Minimize">-</button>
+        <button class="maximize-btn" title="Maximize">□</button>
+        <button class="close-btn" title="Close" onclick="goBack()">×</button>
+      </div>
+    </div>
+    <pre>
+Site Observations
+
+Date: 15 Mar 2025
+- Pillars emit low hum at night
+- Symbols on Pillar 18 pulse rhythmically
+- Shadows move in periphery
+- Site feels "alive"
+
+Security Measures:
+- Increased night patrols
+- Motion sensors installed
+- Cameras recalibrated
+    </pre>
+    <div class="resize-handle"></div>
+  </div>
+
+  <div id="financial_notes" class="file-content">
+    <div class="file-header">
+      <span>financial_notes.txt</span>
+      <div class="window-buttons">
+        <button class="minimize-btn" title="Minimize">-</button>
+        <button class="maximize-btn" title="Maximize">□</button>
+        <button class="close-btn" title="Close" onclick="goBack()">×</button>
+      </div>
+    </div>
+    <pre>
+Financial Notes
+
+Project Budget Status:
+- Current: 85% spent
+- Remaining: 15%
+- Emergency fund: 5%
+
+Concerns:
+- Increased security costs
+- Unexpected equipment failures
+- Delayed funding from sponsors
+
+Action Items:
+- Review budget allocation
+- Consider additional funding sources
+- Monitor expenses closely
+    </pre>
+    <div class="resize-handle"></div>
+  </div>
+
+  <div id="revelation" class="file-content">
+    <div class="file-header">
+      <span>revelation.txt</span>
+      <div class="window-buttons">
+        <button class="minimize-btn" title="Minimize">-</button>
+        <button class="maximize-btn" title="Maximize">□</button>
+        <button class="close-btn" title="Close" onclick="goBack()">×</button>
+      </div>
+    </div>
+    <pre>
+REVELATION
+
+Date: 19 Mar 2025
+
+The site is not what it seems. The symbols are a code. The pillars are... alive. The energy readings are off the charts. I need to document this before...
+    </pre>
+    <div class="resize-handle"></div>
+  </div>
+
+  <div id="revelation1" class="file-content hidden">
+    <div class="file-header">
+      <span>revelation.txt</span>
+      <button onclick="goBack()">×</button>
+    </div>
+    <pre>
+Date: 9 Mar 2025 – 19:30
+
+They keep telling me I’m seeing things.
+
+‘It’s just exhaustion, Levent.’
+‘You’ve been working too hard, Levent.’
+‘The mind plays tricks on tired eyes, Levent.’
+
+But I know what I saw. The patterns on the stones, the way the pillars vibrate when the wind moves through the chamber, the serpents carved in sequence — they are not coincidences.
+
+Göbeklitepe holds a truth that will shatter the boundaries of what we call history, what we call civilization, what we call science itself.
+
+Let them think I’m mad. One day, they’ll see.
+    </pre>
+  </div>
+  <div id="financial1" class="file-content hidden">
+    <div class="file-header">
+      <span>financial_notes.txt</span>
+      <button onclick="goBack()">×</button>
+    </div>
+    <pre>
+Date: 8 Mar 2025 – 11:45
+
+Payment from ‘Antiquity Traders Inc.’ — $5,000, marked as ‘consulting fee.’ No formal contract.
+Equipment purchase for site — double billed.
+Burak warned me once: ‘Careful who you deal with.’ I should have listened.
+    </pre>
+  </div>
+  <div id="observation1" class="file-content hidden">
+    <div class="file-header">
+      <span>site_observation.txt</span>
+      <button onclick="goBack()">×</button>
+    </div>
+    <pre>
+Date: 7 Mar 2025 – 16:20
+
+Something’s been off between Ece and Burak lately.
+
+I first noticed it after the equipment audit last month — Burak hovering a little too close, Ece laughing at his jokes just a little too hard. They think I don’t see, but the site has a way of amplifying tension.
+
+Burak’s attitude toward me has shifted — more curt, more competitive. The collaboration is cracking. Derya senses it, I’m sure, but she’s too tactful to say.
+
+Maybe this is why Ece’s been trying so hard to keep my attention. Maybe this is why Burak has started looking at me like I’m the obstacle he’s tired of working around.
+    </pre>
+  </div>
+  <div id="symptoms1" class="file-content hidden">
+    <div class="file-header">
+      <span>symptoms_log.txt</span>
+      <button onclick="goBack()">×</button>
+    </div>
+    <pre>
+Date: 6 Mar 2025 – 14:45
+
+March 3: Saw the figure again near Pillar 18.
+March 4: Whispering at night, faint but unmistakable.
+March 5: Skipped dose; vivid dreams, waking hallucinations. Must contact Dr. Aksoy.
+    </pre>
+  </div>
+  <div id="personal1" class="file-content hidden">
+    <div class="file-header">
+      <span>personal_note.txt</span>
+      <button onclick="goBack()">×</button>
+    </div>
+    <pre>
+Date: 10 Mar 2025 – 03:30
+
+Derya still waits, still forgives. I don’t know how or why. I love her — or I think I do — but I keep disappearing into the stones, into the whispers that rise from the ground.
+
+Ece was a mistake. A distraction I never meant to last. Now she lingers, like an echo in the dig site, like a secret I can’t bury deep enough.
+    </pre>
+  </div>
+  <div id="confidential1" class="file-content hidden">
+    <div class="file-header">
+      <span>confidential_note.txt</span>
+      <button onclick="goBack()">×</button>
+    </div>
+    <pre>
+Date: 9 Mar 2025 – 22:45
+
+We are no longer excavating history — we are unearthing myth.
+
+The alignment of the pillars, the repeating serpent motifs, the sound resonance in the central chamber… It all points to a society with astronomical and acoustic knowledge far beyond what we imagined for 10,000 BCE.
+
+If these findings hold, history books will have to be rewritten. Burak says I’m chasing ghosts — but it’s the ghosts who are speaking now.
+    </pre>
+  </div>
+  <div id="inbox1" class="file-content hidden">
+    <div class="file-header">
+      <span>Inbox</span>
+      <button onclick="goBack()">×</button>
+    </div>
+    <pre>
+From: Murat Yalçın
+Date: March 11, 2025, 09:15 AM
+
+Levent,
+I hope you’re well. Listen, we’ve got a real problem here. The supplier says the new excavation equipment is delayed due to customs paperwork. Can you confirm the delivery window on your end? We really can’t afford another hold-up, especially with the Ministry visit next week.
+Also, if you hear anything strange around the site at night, let me know. A couple of the workers mentioned odd noises, and frankly, it’s giving me the creeps.
+    </pre>
+  </div>
+  <div id="inbox2" class="file-content hidden">
+    <div class="file-header">
+      <span>Inbox</span>
+      <button onclick="goBack()">×</button>
+    </div>
+    <pre>
+From: Dr. Nihan Aksoy
+Date: March 10, 2025, 03:40 PM
+
+Dear Levent,
+Following up on our last consultation — please remember to take your medication exactly as prescribed. Missing even one or two doses can significantly increase the risk of hallucinations and disorganized thinking. Given the stressful nature of your work, you may not even notice the early signs yourself.
+I strongly recommend keeping a written log of any unusual experiences and reaching out to me immediately if symptoms worsen. We’re making progress, but it’s fragile progress.
+    </pre>
+  </div>
+  <div id="inbox3" class="file-content hidden">
+    <div class="file-header">
+      <span>Inbox</span>
+      <button onclick="goBack()">×</button>
+    </div>
+    <pre>
+From: Istanbul Archaeological Society
+Date: March 9, 2025, 12:00 PM
+
+Dear Dr. Kara,
+We are honored to invite you as a featured speaker at the upcoming International Archaeology Symposium in Istanbul. Your work at Göbeklitepe has been making waves in both academic and media circles, and we believe your insights on Neolithic symbolism would be of great interest to our attendees.
+Please confirm your participation at your earliest convenience. We look forward to your contribution to what promises to be a groundbreaking event.
+    </pre>
+  </div>
+  <div id="inbox4" class="file-content hidden">
+    <div class="file-header">
+      <span>Inbox</span>
+      <button onclick="goBack()">×</button>
+    </div>
+    <pre>
+From: Dr. Nihan Aksoy
+Date: March 7, 2025, 11:00 AM
+
+Levent,
+I’ve reviewed your latest MRI and neurocognitive test results. The structural scans remain stable, which is good news, but the cognitive patterns still show irregularities under stress conditions. Combined with the hallucination episodes you described, it suggests a complex interplay between environmental stressors and underlying susceptibility.
+In short: keep taking your meds, monitor stress, and seriously consider cutting back on late-night work at the site. Let’s set up another follow-up in two weeks.
+    </pre>
+  </div>
+  <div id="inbox5" class="file-content hidden">
+    <div class="file-header">
+      <span>Inbox</span>
+      <button onclick="goBack()">×</button>
+    </div>
+    <pre>
+From: Kemal Yılmaz
+Date: March 10, 2025, 08:15 PM
+
+Levent,
+This is a friendly warning. You’ve been asking too many questions lately, poking around in things you don’t understand. I suggest you back off before someone decides you’re becoming a liability.
+Let the excavation stay an excavation — don’t turn it into something messier. Consider this your only warning.
+    </pre>
+  </div>
+  <div id="sent1" class="file-content hidden">
+    <div class="file-header">
+      <span>Sent</span>
+      <button onclick="goBack()">×</button>
+    </div>
+    <pre>
+To: Prof. Burak Öztürk
+Date: March 9, 2025, 06:20 PM
+
+Burak,
+As promised, I’m sending over the preliminary report from last week’s excavation. The stratigraphy suggests earlier human activity than we previously assumed, and the carvings on Pillar 43 warrant a complete reassessment of our symbolic chronology.
+Please review the raw data I’ve attached and let me know if you notice any anomalies. Also, keep this under wraps until we finalize the carbon dating. I don’t want the press sniffing around just yet.
+    </pre>
+  </div>
+  <div id="sent2" class="file-content hidden">
+    <div class="file-header">
+      <span>Sent</span>
+      <button onclick="goBack()">×</button>
+    </div>
+    <pre>
+To: Derya Yılmaz
+Date: March 10, 2025, 10:50 PM
+
+Derya,
+I know I’ve been distant lately. I can’t explain what’s been happening inside my head — the dreams, the strange feelings at the site, the sense that we’re standing on the edge of something massive.
+I never wanted to hurt you or push you away. Please understand this isn’t about you — it’s about the weight of what we’ve uncovered. I miss you. I just don’t know how to be both present for you and buried in this work.
+    </pre>
+  </div>
+  <div id="sent3" class="file-content hidden">
+    <div class="file-header">
+      <span>Sent</span>
+      <button onclick="goBack()">×</button>
+    </div>
+    <pre>
+To: Excavation Team
+Date: March 11, 2025, 08:00 AM
+
+Dear team,
+A quick reminder about tomorrow’s site meeting at 09:00 sharp. We’ll review last week’s findings, discuss logistics for the Ministry inspection, and address some recent… disturbances around the site.
+Please bring all updated field notes and be prepared to discuss your observations. No distractions tomorrow — this is important.
+    </pre>
+  </div>
+  <div id="sent4" class="file-content hidden">
+    <div class="file-header">
+      <span>Sent</span>
+      <button onclick="goBack()">×</button>
+    </div>
+    <pre>
+To: Istanbul Archaeological Society
+Date: March 7, 2025, 05:45 PM
+
+Dear Committee,
+Thank you for the invitation to speak at the International Archaeology Symposium. I’m honored to accept and will prepare a presentation focused on Göbeklitepe’s latest symbolic interpretations and the implications for early Neolithic society.
+Please send over the program details and let me know if you need a formal abstract.
+    </pre>
+  </div>
+  <div id="alphabet1" class="file-content">
+      <div class="file-header">
+        <span>alphabet1.png</span>
+        <div class="window-buttons">
+          <button class="minimize-btn" title="Minimize">-</button>
+          <button class="maximize-btn" title="Maximize">□</button>
+          <button class="close-btn" title="Close" onclick="goBack()">×</button>
+        </div>
+      </div>
+      <img src="alphabet1.png" style="width: 100%; height: auto;">
+    </div>
+
+    <div id="alphabet2" class="file-content">
+      <div class="file-header">
+        <span>alphabet2.png</span>
+        <div class="window-buttons">
+          <button class="minimize-btn" title="Minimize">-</button>
+          <button class="maximize-btn" title="Maximize">□</button>
+          <button class="close-btn" title="Close" onclick="goBack()">×</button>
+        </div>
+      </div>
+      <img src="alphabet2.png" style="width: 100%; height: auto;">
+    </div>
+
+  <div id="sent5" class="file-content hidden">
+    <div class="file-header">
+      <span>Sent</span>
+      <button onclick="goBack()">×</button>
+    </div>
+    <pre>
+To: Site Security
+Date: March 8, 2025, 10:30 AM
+
+Hello,
+I’ve received multiple reports of unusual activity near the western storage tent — scratches on the ground, faint lights at night, and missing tools.
+Please increase patrols in that area, especially between midnight and 4 AM. Keep a log of any unusual sightings, and inform me directly of anything suspicious. We can’t afford any breaches right now.
+    </pre>
+  </div>
+  <div id="trash1" class="file-content hidden">
+    <div class="file-header">
+      <span>Trash</span>
+      <button onclick="goBack()">×</button>
+    </div>
+    <pre>
+From: Ece Arslan
+Date: December 5, 2024 – 19:30
+Subject: About Us
+
+Levent,
+I keep replaying the night in my head, trying to decide if it meant anything to you—or if it was just another impulse you’ll bury under work.
+I’m not asking for a grand declaration, but I need to know whether “we” exists at all. Burak keeps hinting that I’m being naïve, that you’ll never see me beyond the excavation trenches.
+Please, just be honest with me—for once away from the stones and the journals.
+—Ece
+    </pre>
+  </div>
+  <div id="trash2" class="file-content hidden">
+    <div class="file-header">
+      <span>Trash</span>
+      <button onclick="goBack()">×</button>
+    </div>
+    <pre>
+From: Ece Arslan
+Date: December 10, 2024 – 22:45
+Subject: Hey
+
+You left the site early and avoided eye contact all day. Are you upset about yesterday’s staff dinner?
+Burak was only giving me publishing advice, nothing more. If you’re jealous—say so. If you don’t care—say that, too.
+Silence is worse than an argument.
+—E
+    </pre>
+  </div>
+  <div id="trash3" class="file-content hidden">
+    <div class="file-header">
+      <span>Trash</span>
+      <button onclick="goBack()">×</button>
+    </div>
+    <pre>
+From: Levent Kara → To: Ece Arslan
+Date: December 15, 2024 – 09:15
+Subject: Sorry
+
+Ece,
+I shouldn’t have let things become blurred between us. It was selfish and unfair to you—and to Derya.
+You deserve clarity. I can’t give it. My mind is split between Göbeklitepe, the pressures from Kemal, and my own failing focus.
+What happened was a moment of weakness, not a promise. I’m sorry.
+—L.
+    </pre>
+  </div>
+  <div id="trash4" class="file-content hidden">
+    <div class="file-header">
+      <span>Trash</span>
+      <button onclick="goBack()">×</button>
+    </div>
+    <pre>
+From: Levent Kara → To: Ece Arslan
+Date: December 25, 2024 – 10:40
+Subject: Final
+
+This will be the last message, Ece.
+I relive every dig layer in my sleep, hear voices in the dark, and chase answers that break me apart.
+I can’t be the person you want, and I won’t drag you into whatever is happening to me. Focus on your thesis—forget about “us.”
+Please don’t reply.
+—Levent
+    </pre>
+  </div>
+  <div id="trash5" class="file-content hidden">
+    <div class="file-header">
+      <span>Trash</span>
+      <button onclick="goBack()">×</button>
+    </div>
+    <pre>
+From: Levent Kara → To: Ece Arslan
+Date: December 30, 2024 – 11:25
+Subject: Please Understand
+
+Ece,
+You deserve an explanation I still can’t articulate. The site demands everything: time, sanity, even relationships.
+I’m losing my sense of reality—dreams bleed into waking hours. If I stay near you, I’ll take you down with me.
+Let this end so that at least one of us can keep standing.
+—L.
+    </pre>
+  </div>
+  <div id="photo1" class="file-content hidden">
+    <div class="file-header">
+      <span>Photos</span>
+      <button onclick="goBack()">×</button>
+    </div>
+    <pre>[binary image data placeholder]</pre>
+  </div>
+  <div id="discovery" class="file-content hidden">
+    <div class="file-header">
+      <span>discovery_journal.txt</span>
+      <button onclick="goBack()">×</button>
+    </div>
+    <pre>[private discovery journal placeholder]</pre>
+  </div>
+</div>
+<div id="note-container" class="note-container">
+  <button onclick="hideNote()">×</button>
+  <pre id="note-content"></pre>
+</div>
+</body>
+</html>
